@@ -36,6 +36,8 @@ void* realloc_trap(void *ptr, size_t malloc_size) {
 
 /* Reads input from the user; this includes single lines, as well as
  * escaped multi-line input.
+ *
+ * This is basically a slightly smarter implementation of getline.
  */
 char *read_input() {
     // We do not know the size of the buffer ahead of time; therefore,
@@ -402,11 +404,57 @@ void execute(ast_t* tree, char** stdout) {
     }
 }
 
+void expand_vars(ast_t* ast) {
+    assert(ast->type == AST_STR);
+
+    char *ptr_old = (char*) ast->ptr;
+    size_t ptr_sz = ast->size;
+    size_t new_sz = 0;
+    size_t v_at = 0, v_sz = 0;
+    char *new = NULL, *var = NULL;
+
+    int mode = 0;
+    for(size_t i=0; i < ptr_sz && ptr_old[i] != 0; i++) {
+        switch (ptr_old[i]) {
+            case '$':
+                i++;
+                v_at = i;
+                while((isalpha(ptr_old[i]) || ptr_old[i] == '_') &&
+                      i < ptr_sz && ptr_old[i] != 0)
+                    i++;
+                v_sz = i - v_at;
+                if (ptr_old[i] != '$') {
+                    i--;
+                }
+                var = malloc_trap(v_sz + 1);
+                memset(var, 0, v_sz + 1);
+                memcpy(var, &ptr_old[v_at], v_sz);
+
+                // TODO - get map for $var and insert to output
+
+                break;
+            default:
+                new_sz++;
+                new = realloc_trap(new, new_sz);
+                new[new_sz-1] = ptr_old[i];
+                break;
+        }
+    }
+
+    ast->ptr = new;
+    ast->size = new_sz;
+
+//    printf("(%ld) %s", ast->size, (char*)ast->ptr);
+}
+
 void ast_resolve_subs(ast_t* ast, int master) {
     for(size_t id = 0; id < ast->size; id++) {
         ast_t* chk = &((ast_t*)ast->ptr)[id];
         if (chk->type == AST_ROOT || chk->type == AST_GRP)
             ast_resolve_subs(chk, 0);
+        // If needed, expand variables in strings.
+        if (chk->type == AST_STR)
+            expand_vars(chk);
     }
 
     if (obscene_debug) ast_dump_print(ast, 0);
