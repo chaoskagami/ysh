@@ -348,6 +348,29 @@ pid_t fork_and_execvp(const char *file, char *const argv[], char** stdout) {
     return pid;
 }
 
+typedef int (*builtin_fn_t)(char*, char**, char**);
+
+int builtin_chdir(char* nam, char** argv, char** stdout);
+
+typedef struct {
+    char name[64];
+    builtin_fn_t func;
+} builtin_info_t;
+
+builtin_info_t builtin_info[] = {
+    { "cd", builtin_chdir },
+    { "",   NULL },
+};
+
+int check_builtin(char* name) {
+    for (int i = 0; builtin_info[i].func != NULL; i++) {
+        if (!strcmp(name, builtin_info[i].name)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 void execute(ast_t* tree, char** stdout) {
     // Important note; this function is only for fully resolved trees of commands.
     // If any unresolved subshells or groups exist, this function is undefined.
@@ -369,9 +392,14 @@ void execute(ast_t* tree, char** stdout) {
     argv[tree->size] = NULL;
     prog = argv[0];
 
-    pid_t pid = fork_and_execvp(prog, argv, stdout);
-    int wstatus;
-    pid = waitpid(pid, &wstatus, 0);
+    int builtin_chk = check_builtin(prog);
+    if (builtin_chk != -1) {
+        builtin_info[builtin_chk].func(prog, argv, stdout);
+    } else {
+        pid_t pid = fork_and_execvp(prog, argv, stdout);
+        int wstatus;
+        pid = waitpid(pid, &wstatus, 0);
+    }
 }
 
 void ast_resolve_subs(ast_t* ast, int master) {
