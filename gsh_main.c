@@ -3,10 +3,15 @@
 #include <string.h>
 #include <assert.h>
 #include <ctype.h>
+#include <getopt.h>
 
 #define BUF_CHUNKSIZ 64
 
+// Exit the main interactive loop
 int shell_do_exit = 0;
+
+// Various flags.
+int obscene_debug = 0;
 
 void* malloc_trap(size_t malloc_size) {
     void* ret = malloc(malloc_size);
@@ -103,6 +108,9 @@ char *read_input() {
 // In order to evaluate this, all AST_ROOT subelements must be
 // evaluated such that no AST_ROOT elements remain aside from the tree's
 // primary element.
+
+// Postnote; implementation is a bit different as one can see in --obscene
+// mode.
 
 typedef struct ast_s {
     int    type;
@@ -278,17 +286,42 @@ ast_t* parse(char* data) {
 
     ast_t *ptr = ast->ptr;
 
-    ast_dump_print(ast, 0);
+    if (obscene_debug) ast_dump_print(ast, 0);
 
     return ast;
 }
 
-int main(int c, char *v[]) {
-    while (!shell_do_exit) {
-        // Read a command in.
-        char *input  = read_input();
-        ast_t *toks  = parse(input);
-        free(toks);
-        free(input);
+int main(int argc, char **argv) {
+    char* run_str = NULL;
+    // Options.
+    int c;
+    while ((c = getopt (argc, argv, "Dc:")) != -1) {
+        switch(c) {
+            case 'D':
+                obscene_debug = 1;
+                break;
+            case 'c':
+                run_str = optarg;
+                break;
+            case '?':
+                printf("Invalid invocation.\n");
+                return 1;
+                break;
+            default:
+                assert(0); // Seriously, how?
+                break;
+        }
+    }
+
+    if (run_str) {
+        parse(run_str);
+    } else {
+        while (!shell_do_exit) {
+            // Read a command in.
+            char *input  = read_input();
+            ast_t *toks  = parse(input);
+            // FIXME: free the damn toks memory, this requires traversing to the bottom tho
+            free(input);
+        }
     }
 }
