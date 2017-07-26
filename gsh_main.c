@@ -484,6 +484,8 @@ int main(int argc, char **argv) {
         ast_t *toks = parse(run_str);
         toks        = resolve(toks);
         execute(toks, NULL);
+        free(toks->ptr);
+        free(toks);
     } else {
         while (!shell_do_exit) {
             // Read a command in.
@@ -491,6 +493,8 @@ int main(int argc, char **argv) {
             ast_t *toks  = parse(input);
             toks         = resolve(toks);
             execute(toks, NULL);
+            free(toks->ptr);
+            free(toks);
             // FIXME: free the damn toks memory, this requires traversing to the bottom tho
             free(input);
         }
