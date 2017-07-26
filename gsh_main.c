@@ -4,6 +4,9 @@
 #include <assert.h>
 #include <ctype.h>
 #include <getopt.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 #define BUF_CHUNKSIZ 64
 
@@ -254,20 +257,26 @@ void split_line(char* line, size_t len, ast_t** ast, size_t* siz, int mode) {
 }
 
 void ast_dump_print(ast_t* ast, size_t indent) {
-    for(size_t i=0; i < indent; i++)
-        printf("  ");
-
     if (ast->type == AST_ROOT) {
+        for(size_t i=0; i < indent; i++)
+            printf("  ");
+
         printf("root [%ld]\n", ast->size);
         for(size_t id = 0; id < ast->size; id++) {
             ast_dump_print(&((ast_t*)ast->ptr)[id], indent+1);
         }
     } else if (ast->type == AST_GRP) {
+        for(size_t i=0; i < indent; i++)
+            printf("  ");
+
         printf("grp [%ld]\n", ast->size);
         for(size_t id = 0; id < ast->size; id++) {
             ast_dump_print(&((ast_t*)ast->ptr)[id], indent+1);
         }
     } else if (ast->type == AST_STR) {
+        for(size_t i=0; i < indent; i++)
+            printf("  ");
+
         printf("str '");
         char * str = ast->ptr;
         size_t max = ast->size;
@@ -275,7 +284,7 @@ void ast_dump_print(ast_t* ast, size_t indent) {
             printf("%c", str[s]);
         printf("'\n");
     } else {
-        printf("?\n");
+        assert(0);
     }
 }
 
@@ -289,6 +298,136 @@ ast_t* parse(char* data) {
     if (obscene_debug) ast_dump_print(ast, 0);
 
     return ast;
+}
+
+#define BUFFER
+
+pid_t fork_and_execvp(const char *file, char *const argv[], char** stdout) {
+    pid_t pid;
+
+    int pipefd[2];
+    if (stdout)
+        pipe(pipefd);
+
+    pid = fork();
+
+    if (pid == 0) {
+        if (stdout) {
+            // Close the rx pipe in child.
+            close(pipefd[0]);
+            dup2(pipefd[1], 1); // stdout -> pipe
+            close(pipefd[1]);
+        }
+
+        execvp(file, argv);
+    } else {
+        if (stdout) {
+            size_t stdout_sz = 4096, stdout_at = 0;
+            *stdout = NULL;
+            char * cur = *stdout;
+
+            // Close the tx pipe in parent.
+            close(pipefd[1]);
+            ssize_t bytes = 0;
+            do {
+                stdout_at++;
+                *stdout = realloc_trap(*stdout, stdout_sz * stdout_at);
+                cur = *stdout + (stdout_sz * (stdout_at-1));
+                memset(cur, 0, 4096);
+
+                bytes = read(pipefd[0], cur, stdout_sz);
+            } while (bytes != 0);
+
+            // Strip the last \n from output, if applicable.
+            size_t len = strlen(*stdout);
+            if ((*stdout)[len-1] == '\n')
+                (*stdout)[len-1] = 0;
+        }
+
+    }
+    return pid;
+}
+
+void execute(ast_t* tree, char** stdout) {
+    // Important note; this function is only for fully resolved trees of commands.
+    // If any unresolved subshells or groups exist, this function is undefined.
+    // Additionally, tree must be of type AST_ROOT.
+    assert(tree->type == AST_ROOT);
+
+    // This function will eventually also perform shortest-unique-path
+    // expansions. For example, typing /b/busy will resolve to /bin/busybox.
+
+    char*  prog;
+    char** argv = malloc_trap((tree->size + 1) * sizeof(char*));
+    for (size_t i = 0; i < tree->size; i++) {
+        ast_t* str = &((ast_t*)tree->ptr)[i];
+        char *str_s = malloc_trap(str->size + 1);
+        memset(str_s, 0, str->size + 1);
+        memcpy(str_s, str->ptr, str->size);
+        argv[i] = str_s;
+    }
+    argv[tree->size] = NULL;
+    prog = argv[0];
+
+    pid_t pid = fork_and_execvp(prog, argv, stdout);
+    int wstatus;
+    pid = waitpid(pid, &wstatus, 0);
+}
+
+void ast_resolve_subs(ast_t* ast, int master) {
+    for(size_t id = 0; id < ast->size; id++) {
+        ast_t* chk = &((ast_t*)ast->ptr)[id];
+        if (chk->type == AST_ROOT || chk->type == AST_GRP)
+            ast_resolve_subs(chk, 0);
+    }
+
+    if (obscene_debug) ast_dump_print(ast, 0);
+
+    // No more AST_ROOT or AST_GRP left to fix up. Now, depending
+    // on type, we need to do the following:
+    // for AST_ROOT: execute and capture stdout, then use stdout as new AST_STR
+    // for AST_GRP: concatenate strings and replace AST_GRP with AST_STR
+
+    if (master) return; // Don't fuck the tree's root node.
+
+    if (ast->type == AST_ROOT) {
+        char *output = NULL;
+        execute(ast, &output);
+        free(ast->ptr);
+        ast->type = AST_STR;
+        ast->ptr = output;
+        ast->size = strlen(output);
+    } else if (ast->type == AST_GRP) {
+        size_t total = 0;
+        size_t at = 0;
+        char *buf = malloc_trap(1);
+        for(size_t id = 0; id < ast->size; id++) {
+            ast_t* chk = &((ast_t*)ast->ptr)[id];
+
+            total += chk->size;
+            buf = realloc_trap(buf, total);
+
+            memcpy(&buf[at], chk->ptr, chk->size);
+            at += chk->size;
+        }
+        free(ast->ptr);
+        ast->type = AST_STR;
+        ast->ptr  = buf;
+        ast->size = total;
+    }
+}
+
+ast_t* resolve(ast_t* tree) {
+    // This traverses the tree, executing subshell commands,
+    // expanding escape sequences within strings, etc
+    // until only the top-level AST_ROOT remains with no more
+    // expansion needed.
+
+    ast_resolve_subs(tree, 1);
+
+    if (obscene_debug) ast_dump_print(tree, 0);
+
+    return tree;
 }
 
 int main(int argc, char **argv) {
@@ -314,12 +453,16 @@ int main(int argc, char **argv) {
     }
 
     if (run_str) {
-        parse(run_str);
+        ast_t *toks = parse(run_str);
+        toks        = resolve(toks);
+        execute(toks, NULL);
     } else {
         while (!shell_do_exit) {
             // Read a command in.
             char *input  = read_input();
             ast_t *toks  = parse(input);
+            toks         = resolve(toks);
+            execute(toks, NULL);
             // FIXME: free the damn toks memory, this requires traversing to the bottom tho
             free(input);
         }
