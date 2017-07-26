@@ -1,0 +1,42 @@
+Builtin commands
+--------------------
+
+Basic
+--------------------
+
+cd [dir]
+   Change directory to dir, relative to the current working directory.
+   Omission of dir will change directory to $HOME.
+
+Math
+--------------------
+General math functions. They all take any number of arguments and
+perform the operation on all arguments (or relative to the first,
+with subtraction/division)
+
+If an optional single-character prefix is specified (x, X, o) before
+the operator the output will take the form of lowercase hexadecimal,
+uppercase hexadecimal or octal.
+
+Prefixes are interpreted in the input, so the value 0xDEADBEEF will
+be treated as hexadecimal.
+
+[xXo]+ ...
+   Add the arguments provided together and print the result.
+
+[xXo]- ...
+   Subtract in order starting from the first argument and print the
+   result.
+
+[xXo]* ...
+   Multiply the arguments provided together and print the result.
+
+[xXo]/ ...
+   Perform integer division in order with the first argument as the
+   dividend, with subsequent results becoming the divident and print the
+   result.
+
+[xXo]% ...
+   Calculate the modulo (integer remainder) in order with the first
+   argument as the dividend, with subsequent results becoming the
+   divident and print the result.

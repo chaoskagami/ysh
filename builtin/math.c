@@ -1,4 +1,11 @@
-// Future home of 'math' builtins.
+// Do note that these builtin commands, implementation-wise, accept more than
+// two arguments; make sure to carefully consider inputs, since for example:
+//   / 10 2 2
+// is equivalent to 10 / 2 / 2.
+// This is similar to scheme/lisp dialects.
+// Additionally, these will parse octal (0) and hexadecimal (0x) when
+// provided; this is desirable behavior to me but it may not be to you.
+// Make sure you don't have leading zeroes, or strip them beforehand.
 
 #include <stdio.h>
 #include <stdlib.h>
