@@ -12,7 +12,33 @@
 #include "util.h"
 
 builtin_info_t builtin_info[] = {
-    { "cd", builtin_chdir },
+    { "cd",  builtin_chdir },
+
+    { "+",   builtin_add },
+    { "x+",  builtin_add },
+    { "X+",  builtin_add },
+    { "o+",  builtin_add },
+
+    { "-",   builtin_sub },
+    { "x-",  builtin_sub },
+    { "X-",  builtin_sub },
+    { "o-",  builtin_sub },
+
+    { "*",   builtin_mul },
+    { "x*",  builtin_mul },
+    { "X*",  builtin_mul },
+    { "o*",  builtin_mul },
+
+    { "/",   builtin_div },
+    { "x/",  builtin_div },
+    { "X/",  builtin_div },
+    { "o/",  builtin_div },
+
+    { "%",   builtin_modulo },
+    { "x%",  builtin_modulo },
+    { "X%",  builtin_modulo },
+    { "o%",  builtin_modulo },
+
     { "",   NULL },
 };
 
